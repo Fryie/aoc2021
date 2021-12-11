@@ -37,20 +37,16 @@ def neighbours(board, ri, ci)
   ns
 end
 
-def flash(board, ri, ci, num_flashes, flashed)
-  return num_flashes if board[ri][ci] <= 9
-  return num_flashes if flashed.include? [ri,ci]
+def flash(board, ri, ci, flashed)
+  return if board[ri][ci] <= 9
+  return if flashed.include? [ri,ci]
 
   flashed.add [ri,ci]
 
-  new_num = num_flashes + 1
-
   neighbours(board, ri, ci).each do |nri, nci|
     board[nri][nci] += 1
-    new_num = flash(board, nri, nci, new_num, flashed)
+    flash(board, nri, nci, flashed)
   end
-
-  return new_num
 end
 
 num_flashes = 0
@@ -66,13 +62,15 @@ num_flashes = 0
 
   input.each_with_index do |row, ri|
     row.each_with_index do |entry, ci|
-      num_flashes = flash(input, ri, ci, num_flashes, flashed)
+      flash(input, ri, ci, flashed)
     end
   end
 
   flashed.each do |ri, ci|
     input[ri][ci] = 0
   end
+
+  num_flashes += flashed.count
 end
 
 puts num_flashes
