@@ -7,11 +7,17 @@ import Data.Set (Set)
 import qualified Data.Text as T
 import System.IO
 
-type Node = T.Text
-
+data Node = Small T.Text | Large T.Text deriving (Eq, Ord)
 type NodeSet = Set Node
-
 type EdgeMap = Map Node NodeSet
+
+start = Small "start"
+end = Small "end"
+
+toEdge :: T.Text -> Node
+toEdge t
+  | T.toLower t == t = Small t
+  | otherwise        = Large t
 
 addEdge :: Node -> Node -> EdgeMap -> EdgeMap
 addEdge from to edges =
@@ -29,41 +35,38 @@ getEdges input =
     augmentMap "" edges = edges
     augmentMap line edges =
       let nodes = T.splitOn "-" line
-          node1 = head nodes
-          node2 = head $ tail nodes
+          node1 = toEdge $ head nodes
+          node2 = toEdge $ head $ tail nodes
        in addEdge node1 node2 (addEdge node2 node1 edges)
 
 type DoubleVisited = Bool
 
 type PathPermitted = Bool
 
-checkPath ::
-     Node -> Node -> NodeSet -> DoubleVisited -> (PathPermitted, DoubleVisited)
-checkPath _ "start" _ doubleVisited = (False, doubleVisited)
-checkPath from to visited doubleVisited =
-  let isSmall = T.toLower to == to
-      revisiting = S.member to visited
-   in if isSmall && revisiting
-        then ((not doubleVisited), True)
-        else (True, doubleVisited)
+checkPath :: Node -> Node -> NodeSet -> DoubleVisited -> (PathPermitted, DoubleVisited)
+checkPath from to@(Small _) visited doubleVisited
+  | to == start         = (False, doubleVisited)
+  | S.member to visited = ((not doubleVisited), True)
+  | otherwise           = (True, doubleVisited)
+checkPath _ _ _ doubleVisited = (True, doubleVisited)
 
 findPaths :: EdgeMap -> Node -> NodeSet -> DoubleVisited -> Int
-findPaths _ "end" _ _ = 1
-findPaths edges from visited doubleVisited =
-  let neighbours = M.findWithDefault S.empty from edges
-   in foldr count 0 neighbours
-  where
-    count :: Node -> Int -> Int
-    count node acc =
-      let (permission, newDoubleVisited) =
-            checkPath from node visited doubleVisited
-          newVisited = S.insert node visited
-       in if (not permission)
-            then acc
-            else acc + (findPaths edges node newVisited newDoubleVisited)
+findPaths edges from visited doubleVisited
+  | from == end = 1
+  | otherwise   =
+    let neighbours = M.findWithDefault S.empty from edges
+     in foldr count 0 neighbours
+    where
+      count :: Node -> Int -> Int
+      count node acc =
+        let (permission, newDoubleVisited) = checkPath from node visited doubleVisited
+            newVisited = S.insert node visited
+         in if (not permission)
+              then acc
+              else acc + (findPaths edges node newVisited newDoubleVisited)
 
 findPathsFromStart :: EdgeMap -> Int
-findPathsFromStart edges = findPaths edges "start" S.empty False
+findPathsFromStart edges = findPaths edges start S.empty False
 
 main :: IO ()
 main = do
