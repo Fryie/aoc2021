@@ -28,25 +28,23 @@ def check_path(from, to, visited_caves, double_visited)
   end
 end
 
-# returns a list of paths, i.e. a list of lists of nodes
+# returns number of paths from "from" to end
 def find_paths(from, visited_caves, double_visited)
-  return [[from]] if from == 'end'
+  return 1 if from == 'end'
 
-  $edges[from].flat_map do |neighbour|
+  $edges[from].inject(0) do |a, neighbour|
     permission, new_double_visited = check_path(from, neighbour, visited_caves, double_visited)
 
     if !permission
-      nil
+      a
     else
       new_visited_caves = visited_caves + [neighbour]
 
-      find_paths(neighbour, new_visited_caves, new_double_visited).map do |subpath|
-        [from] + subpath
-      end
+      a + find_paths(neighbour, new_visited_caves, new_double_visited)
     end
-  end.compact
+  end
 end
 
 paths = find_paths('start', Set.new, false)
 
-puts paths.count
+puts paths

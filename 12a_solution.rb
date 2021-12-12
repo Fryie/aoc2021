@@ -11,32 +11,25 @@ input.each do |nodeA, nodeB|
   $edges[nodeB].add nodeA
 end
 
-# returns a list of paths, i.e. a list of lists of nodes
-def find_paths(from, visited_edges, visited_small_caves)
-  return [[from]] if from == 'end'
+# returns number of paths from "from" to end
+def find_paths(from, visited_small_caves)
+  return 1 if from == 'end'
 
-  $edges[from].flat_map do |neighbour|
+  $edges[from].inject(0) do |a, neighbour|
     if visited_small_caves.include? neighbour
-      nil
-    elsif visited_edges.include? [from, neighbour]
-      nil
-
+      a
     else
-      new_visited_edges = visited_edges + [[from, neighbour]]
-
       if neighbour.downcase == neighbour # small cave
         new_visited_small_caves = visited_small_caves + [neighbour]
       else
         new_visited_small_caves = visited_small_caves
       end
 
-      find_paths(neighbour, new_visited_edges, new_visited_small_caves).map do |subpath|
-        [from] + subpath
-      end
+      a + find_paths(neighbour, new_visited_small_caves)
     end
-  end.compact
+  end
 end
 
-paths = find_paths('start', Set.new, Set.new(['start']))
+paths = find_paths('start', Set.new(['start']))
 
-puts paths.count
+puts paths
