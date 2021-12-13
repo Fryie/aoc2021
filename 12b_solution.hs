@@ -7,17 +7,28 @@ import Data.Set (Set)
 import qualified Data.Text as T
 import System.IO
 
-data Node = Small T.Text | Large T.Text deriving (Eq, Ord)
+data Node = Start | End | Small Int | Large Int deriving (Eq, Ord)
 type NodeSet = Set Node
 type EdgeMap = Map Node NodeSet
+type NodesToNums = Map T.Text Int
 
-start = Small "start"
-end = Small "end"
+toNode :: T.Text -> NodesToNums -> (Node, NodesToNums)
+toNode t nodesToNums
+  | t == "start"     = (Start, nodesToNums)
+  | t == "end"       = (End, nodesToNums)
+  | T.toLower t == t = (Small getNum, updateNums)
+  | otherwise        = (Large getNum, updateNums)
+  where
+    getNum :: Int
+    getNum = M.findWithDefault increment t nodesToNums
 
-toEdge :: T.Text -> Node
-toEdge t
-  | T.toLower t == t = Small t
-  | otherwise        = Large t
+    updateNums :: NodesToNums
+    updateNums
+      | M.member t nodesToNums = nodesToNums
+      | otherwise              = M.insert t increment nodesToNums
+
+    increment :: Int
+    increment = (M.size nodesToNums) + 1
 
 addEdge :: Node -> Node -> EdgeMap -> EdgeMap
 addEdge from to edges =
@@ -29,44 +40,43 @@ getEdges :: String -> EdgeMap
 getEdges input =
   let inputText = T.pack input
       lines = T.splitOn "\n" inputText
-   in foldr augmentMap M.empty lines
+   in fst $ foldr augment (M.empty, M.empty) lines
   where
-    augmentMap :: T.Text -> EdgeMap -> EdgeMap
-    augmentMap "" edges = edges
-    augmentMap line edges =
-      let nodes = T.splitOn "-" line
-          node1 = toEdge $ head nodes
-          node2 = toEdge $ head $ tail nodes
-       in addEdge node1 node2 (addEdge node2 node1 edges)
+    augment :: T.Text -> (EdgeMap, NodesToNums) -> (EdgeMap, NodesToNums)
+    augment "" a = a
+    augment line (edges, nodeMap) =
+      let nodes             = T.splitOn "-" line
+          (node1, nodeMap1) = toNode (head nodes) nodeMap
+          (node2, nodeMap2) = toNode (head (tail nodes)) nodeMap1
+          newEdges          = addEdge node1 node2 (addEdge node2 node1 edges)
+       in (newEdges, nodeMap2)
 
 type DoubleVisited = Bool
-
 type PathPermitted = Bool
 
 checkPath :: Node -> Node -> NodeSet -> DoubleVisited -> (PathPermitted, DoubleVisited)
-checkPath from to@(Small _) visited doubleVisited
-  | to == start         = (False, doubleVisited)
+checkPath _ Start _ doubleVisited     = (False, doubleVisited)
+checkPath _ (Large _) _ doubleVisited = (True, doubleVisited)
+checkPath from to visited doubleVisited
   | S.member to visited = ((not doubleVisited), True)
   | otherwise           = (True, doubleVisited)
-checkPath _ _ _ doubleVisited = (True, doubleVisited)
 
 findPaths :: EdgeMap -> Node -> NodeSet -> DoubleVisited -> Int
-findPaths edges from visited doubleVisited
-  | from == end = 1
-  | otherwise   =
-    let neighbours = M.findWithDefault S.empty from edges
-     in foldr count 0 neighbours
-    where
-      count :: Node -> Int -> Int
-      count node acc =
-        let (permission, newDoubleVisited) = checkPath from node visited doubleVisited
-            newVisited = S.insert node visited
-         in if (not permission)
-              then acc
-              else acc + (findPaths edges node newVisited newDoubleVisited)
+findPaths _ End _ _ = 1
+findPaths edges from visited doubleVisited =
+  let neighbours = M.findWithDefault S.empty from edges
+   in foldr count 0 neighbours
+  where
+    count :: Node -> Int -> Int
+    count node acc =
+      let (permission, newDoubleVisited) = checkPath from node visited doubleVisited
+          newVisited = S.insert node visited
+       in if (not permission)
+            then acc
+            else acc + (findPaths edges node newVisited newDoubleVisited)
 
 findPathsFromStart :: EdgeMap -> Int
-findPathsFromStart edges = findPaths edges start S.empty False
+findPathsFromStart edges = findPaths edges Start S.empty False
 
 main :: IO ()
 main = do
