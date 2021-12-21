@@ -1,21 +1,41 @@
 require 'set'
 
 filename = "test.txt"
-dirs = [1, -1]
 num_beacons = 12
+dirs = [1, -1]
+
+def unit(i, sign)
+  [0, 1, 2].map do |j|
+    j == i ? sign : 0
+  end
+end
+
+def cross_prod(a, b)
+  [
+    a[1]*b[2]-a[2]*b[1],
+    a[2]*b[0]-a[0]*b[2],
+    a[0]*b[1]-a[1]*b[0]
+  ]
+end
+
+def matching_dir(perm, sign1, sign2)
+  cross_prod(
+    unit(perm[0], sign1),
+    unit(perm[1], sign2)
+  )[perm[2]]
+end
+
 $orientations = dirs.flat_map do |e1|
   dirs.flat_map do |e2|
-    dirs.flat_map do |e3|
-      [:x, :y, :z].map do |f|
-        { first: f, dir: [e1, e2, e3] }
-      end
+    [0, 1, 2].permutation.map do |perm|
+      { perm: perm, dir: [e1, e2, matching_dir(perm, e1, e2)] }
     end
   end
 end
 
 def invert(orientation)
   {
-    first: orientation[:first],
+    perm: orientation[:perm],
     dir: orientation[:dir].map { |e| -e }
   }
 end
@@ -54,31 +74,19 @@ def try_match(as, bs, size)
     end
   end
 
-  nil
+  [nil, nil]
 end
 
 def move(a, b, orientation)
-  shuffled = case orientation[:first]
-             when :x
-               a
-             when :y
-               [a[1], a[2], a[0]]
-             else
-               [a[2], a[0], a[1]]
-             end
+  perm = orientation[:perm]
+
+  shuffled = [a[perm[0]], a[perm[1]], a[perm[2]]]
 
   shifted = shuffled.each_with_index.map do |e, i|
     e + orientation[:dir][i] * b[i]
   end
 
-  case orientation[:first]
-  when :x
-    shifted
-  when :y
-    [shifted[2], shifted[0], shifted[1]]
-  else
-    [shifted[1], shifted[2], shifted[0]]
-  end
+  [shifted[perm.index(0)], shifted[perm.index(1)], shifted[perm.index(2)]]
 end
 
 def overlap_all(scanners, scanner_data, size)
@@ -95,6 +103,16 @@ def overlap_all(scanners, scanner_data, size)
 
   index_pairs.each do |i1, i2|
     try_overlap(scanners, scanner_data, i1, i2, size)
+  end
+
+  # fill in missing orientations
+  indices.filter { |i| scanner_data[i][:orientation].nil? }.each do |i|
+    scanner_data[i][:paths].each do |path|
+      scanner_b_pos, orientation = try_match(scanners[path[:from]], scanners[i], size)
+      if !scanner_b_pos.nil?
+        scanner_data[i][:orientation] = orientation
+      end
+    end
   end
 end
 
@@ -156,14 +174,25 @@ def scanner_positions(scanner_data)
   end
 end
 
+def find_beacons(beacons, scanners, scanner_data, scanner_pos)
+  scanners.each_with_index do |scanner, i|
+    scanner.each do |beacon|
+      beacon_abs = move(scanner_pos[i], beacon, scanner_data[i][:orientation])
+      beacons.add beacon_abs
+    end
+  end
+end
+
 scanners = parse_input("test.txt")
 scanner_data = Array.new(scanners.length) { {paths: [], orientation: nil} }
 scanner_data[0] = {
   paths: [{ from: 0, pos: [0,0,0]}],
-  orientation: { first: :x, dir: [1, 1, 1] }
+  orientation: { perm: [0, 1, 2], dir: [1, 1, 1] }
 }
 
 overlap_all(scanners, scanner_data, num_beacons)
 reduce(scanner_data)
 scanner_pos = scanner_positions(scanner_data)
-puts scanner_pos.inspect
+beacons = Set.new
+find_beacons(beacons, scanners, scanner_data, scanner_pos)
+puts beacons.count
