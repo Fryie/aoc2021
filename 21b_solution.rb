@@ -22,7 +22,21 @@ def other(player)
   player == 0 ? 1 : 0
 end
 
+$memo = {}
+
 def play(player, current_pos, score)
+  key = [player, current_pos, score]
+  memoized = $memo[key]
+  if memoized.nil?
+    _play(player, current_pos, score).tap do |val|
+      $memo[key] = val
+    end
+  else
+    memoized
+  end
+end
+
+def _play(player, current_pos, score)
   if score[player] >= 21
     num_wins = []
     num_wins[player] = 1
