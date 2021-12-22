@@ -25,12 +25,12 @@ possibleRollValues = foldr reduce M.empty possibleRolls
 move :: Integer -> Integer -> Integer
 move a b = ((a-1+b) `mod` 10) + 1
 
-data Player = PlayerA | PlayerB
+data Player = PlayerA | PlayerB deriving (Eq, Ord)
 other :: Player -> Player
 other PlayerA = PlayerB
 other PlayerB = PlayerA
 
-data PlayerValues = PlayerValues Integer Integer
+data PlayerValues = PlayerValues Integer Integer deriving (Eq, Ord)
 get :: PlayerValues -> Player -> Integer
 get (PlayerValues a _) PlayerA = a
 get (PlayerValues _ b) PlayerB = b
@@ -55,26 +55,43 @@ type Scores = PlayerValues
 type Positions = PlayerValues
 type Wins = PlayerValues
 
-play :: Player -> Positions -> Scores -> Wins
-play player positions scores
-  | get scores PlayerA >= 21 = set nulls PlayerA 1
-  | get scores PlayerB >= 21 = set nulls PlayerB 1
-  | otherwise = M.foldrWithKey reduce nulls possibleRollValues
+type MemoKey = (Player, Positions, Scores)
+type Memo = M.Map MemoKey Wins
+
+play :: Memo -> Player -> Positions -> Scores -> (Memo, Wins)
+play memo player positions scores =
+  let memoKey = (player, positions, scores)
+      memoVal = M.lookup memoKey memo
+      (newMemo, result) = getResult memoVal
+  in  (M.insert memoKey result newMemo, result)
   where
-    reduce :: Integer -> Integer -> PlayerValues -> PlayerValues
-    reduce rollVal count wins =
+    getResult :: Maybe Wins -> (Memo, Wins)
+    getResult (Just mv) = (memo, mv)
+    getResult Nothing = play' memo player positions scores
+
+play' :: Memo -> Player -> Positions -> Scores -> (Memo, Wins)
+play' memo player positions scores
+  | get scores PlayerA >= 21 = (memo, set nulls PlayerA 1)
+  | get scores PlayerB >= 21 = (memo, set nulls PlayerB 1)
+  | otherwise = M.foldrWithKey reduce (memo, nulls) possibleRollValues
+  where
+    reduce :: Integer -> Integer -> (Memo, Wins) -> (Memo, Wins)
+    reduce rollVal count (memoAcc, wins) =
       let playerPos = move (get positions player) rollVal
           newPos = set positions player playerPos
           playerScore = (get scores player) + playerPos
           newScores = set scores player playerScore
 
-          subWins = play (other player) newPos newScores
-      in  add wins (mult count subWins)
+          (newMemo, subWins) = play memoAcc (other player) newPos newScores
+      in  (newMemo, add wins (mult count subWins))
+
+doPlay :: Player -> Positions -> Wins
+doPlay startPlayer startPos = snd $ play M.empty startPlayer startPos nulls
 
 startPlayer = PlayerA
 startPos = PlayerValues 6 3
 
 main :: IO ()
 main = do
-  let wins = play startPlayer startPos nulls
+  let wins = doPlay startPlayer startPos
   putStrLn $ show $ max' wins
