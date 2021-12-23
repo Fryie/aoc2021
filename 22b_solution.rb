@@ -1,9 +1,5 @@
 require 'set'
 
-# non-working solution :(
-# it can calculate the total area that is lit but not the amount of points enclosed
-# the reason is that points on the faces of cuboids could be contained multiple times, or could be switched off
-
 filename = "22input.txt"
 
 $digit_pattern = "(-?\\d+)"
@@ -74,56 +70,40 @@ def diff(a, b)
   remaining_bounds = a.dup
 
   if remaining_bounds[:x_to] > b[:x_to]
-    disjoint.add remaining_bounds.merge(x_from: b[:x_to])
+    disjoint.add remaining_bounds.merge(x_from: b[:x_to]+1)
     remaining_bounds[:x_to] = b[:x_to]
   end
   if remaining_bounds[:y_to] > b[:y_to]
-    disjoint.add remaining_bounds.merge(y_from: b[:y_to])
+    disjoint.add remaining_bounds.merge(y_from: b[:y_to]+1)
     remaining_bounds[:y_to] = b[:y_to]
   end
   if remaining_bounds[:z_to] > b[:z_to]
-    disjoint.add remaining_bounds.merge(z_from: b[:z_to])
+    disjoint.add remaining_bounds.merge(z_from: b[:z_to]+1)
     remaining_bounds[:z_to] = b[:z_to]
   end
 
   if remaining_bounds[:x_from] < b[:x_from]
-    disjoint.add remaining_bounds.merge(x_to: b[:x_from])
+    disjoint.add remaining_bounds.merge(x_to: b[:x_from]-1)
     remaining_bounds[:x_from] = b[:x_from]
   end
   if remaining_bounds[:y_from] < b[:y_from]
-    disjoint.add remaining_bounds.merge(y_to: b[:y_from])
+    disjoint.add remaining_bounds.merge(y_to: b[:y_from]-1)
     remaining_bounds[:y_from] = b[:y_from]
   end
   if remaining_bounds[:z_from] < b[:z_from]
-    disjoint.add remaining_bounds.merge(z_to: b[:z_from])
+    disjoint.add remaining_bounds.merge(z_to: b[:z_from]-1)
     remaining_bounds[:z_from] = b[:z_from]
   end
 
   disjoint
 end
 
-def intersect(a, b)
-  return a if b == :universe
-  return b if a == :universe
-  return nil if (a.nil? || b.nil?)
-  return nil if !overlap?(a, b)
-
-  {
-    x_from: [a[:x_from], b[:x_from]].max,
-    y_from: [a[:y_from], b[:y_from]].max,
-    z_from: [a[:z_from], b[:z_from]].max,
-    x_to: [a[:x_to], b[:x_to]].min,
-    y_to: [a[:y_to], b[:y_to]].min,
-    z_to: [a[:z_to], b[:z_to]].min
-  }
-end
-
-def area(cuboid)
+def points_in(cuboid)
   return 0 if cuboid.nil?
 
-  (cuboid[:x_to]-cuboid[:x_from]) *
-    (cuboid[:y_to]-cuboid[:y_from]) *
-    (cuboid[:z_to] - cuboid[:z_from])
+  (cuboid[:x_to]-cuboid[:x_from]+1) *
+    (cuboid[:y_to]-cuboid[:y_from]+1) *
+    (cuboid[:z_to] - cuboid[:z_from]+1)
 end
 
 def process(cuboids)
@@ -143,12 +123,12 @@ def process(cuboids)
   union
 end
 
-def total_area(disjoint_union)
+def total_points(disjoint_union)
   disjoint_union.inject(0) do |a, set|
-    a + area(set)
+    a + points_in(set)
   end
 end
 
 cuboids = parse_input(filename)
 disjoint_union = process(cuboids)
-puts total_area(disjoint_union)
+puts total_points(disjoint_union)
