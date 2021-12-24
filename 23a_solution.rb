@@ -2,9 +2,9 @@ require 'set'
 
 # too lazy to parse this from a file
 input = [
-  [:B, :A],
   [:C, :D],
-  [:B, :C],
+  [:C, :A],
+  [:B, :B],
   [:D, :A]
 ]
 
@@ -16,6 +16,7 @@ $rooms = {
   D: [[2, 9], [3, 9]]
 }
 $outside_room = [[1, 3], [1, 5], [1, 7], [1, 9]]
+$cols = { A: 3, B: 5, C: 7, D: 9 }
 
 state = {
   empty: $hallway.dup,
@@ -29,8 +30,7 @@ state = {
     $rooms[:D][0] => { id: 6, val: input[3][0] },
     $rooms[:D][1] => { id: 7, val: input[3][1] }
   },
-  last_move: nil,
-  has_stopped_in_hallway: (0..7).map { |id| [id, false] }.to_h
+  last_move: nil
 }
 
 def neighbours(i, j)
@@ -47,14 +47,70 @@ def matching_room?(room, mover)
   $rooms[mover[:val]].include?(room)
 end
 
+def find_open_paths(state)
+  occupied = state[:occupied]
+
+  occupied.map do |(i, j), val|
+    col = $cols[val[:val]]
+    below_val = occupied[[3, col]]
+
+    if matching_room?([i, j], val) || (!below_val.nil? && below_val[:val] != val[:val])
+      nil
+    else
+      up_path = (1..i-1).map { |k| [k, j] }.reverse
+
+      if j < col
+        horizontal_path = (j+1..col).map { |k| [1, k] }
+      elsif j > col
+        horizontal_path = (col..j-1).map { |k| [1, k] }.reverse
+      else
+        horizontal_path = []
+      end
+
+      down_path = [[2, col]]
+      if below_val.nil?
+        down_path << [3, col]
+      end
+
+      { components: up_path + horizontal_path + down_path, mover: val }
+    end
+  end.compact.select do |path|
+    path[:components].all? do |component|
+      state[:occupied][component].nil?
+    end
+  end
+end
+
 def legal_move?(state, move)
-  if !state[:last_move].nil? && $outside_room.include?(state[:last_move][:to]) && move[:mover] != state[:last_move][:mover]
+  open_paths = find_open_paths(state)
+  last_move = state[:last_move]
+
+  if !last_move.nil? && $outside_room.include?(last_move[:to]) && move[:mover] != last_move[:mover]
     return false
   end
   if $hallway.include?(move[:from]) && !$hallway.include?(move[:to]) && !matching_room?(move[:to], move[:mover])
     return false
   end
-  if state[:has_stopped_in_hallway][move[:mover][:id]] && $hallway.include?(move[:to])
+  if !last_move.nil? && last_move[:mover] != move[:mover] && $hallway.include?(move[:from]) && !open_paths.any? { |path| path[:components][0] == move[:to] && path[:mover] == move[:mover] }
+    return false
+  end
+
+  # these moves are legal, but don't make sense
+  if !last_move.nil? && move[:to] == last_move[:from] && move[:from] == last_move[:to]
+    return false
+  end
+
+  if move[:from][0] == 3 && matching_room?(move[:from], move[:mover])
+    return false
+  end
+
+  below_room = [move[:from][0]+1, move[:from][1]]
+  below_state = state[:occupied][below_room]
+  if !below_state.nil? && move[:from][0] == 2 && matching_room?(move[:from], move[:mover]) && matching_room?(below_room, below_state)
+    return false
+  end
+
+  if !open_paths.empty? && !open_paths.any? { |path| path[:components][0] == move[:to] }
     return false
   end
 
@@ -95,17 +151,10 @@ def execute_move(state, move)
   new_occupied[move[:to]] = move[:mover]
   new_occupied.delete move[:from]
 
-  new_has_stopped_in_hallway = state[:has_stopped_in_hallway].dup
-  new_has_stopped_in_hallway[move[:mover][:id]] = false
-  if !state[:last_move].nil? && move[:mover] != state[:last_move][:mover] && $hallway.include?(state[:last_move][:to])
-    new_has_stopped_in_hallway[state[:last_move][:mover][:id]] = true
-  end
-
   new_state = {
     empty: new_empty,
     occupied: new_occupied,
-    last_move: move,
-    has_stopped_in_hallway: new_has_stopped_in_hallway
+    last_move: move
   }
 
   [new_state, cost]
@@ -123,35 +172,49 @@ def end_state?(state)
   true
 end
 
-def min_cost(cache, state, path)
-  cached = cache[state]
-  return cached if !cached.nil?
+# global variable is ugh, but I can't be bothered
+$global_min = Float::INFINITY
 
-  result = min_cost_uncached(cache, state, path)
-  cache[state] = result
+def min_cost(cache, state, path, current_cost)
+  return Float::INFINITY if current_cost == Float::INFINITY
+
+  cached = cache[state]
+  return cached + current_cost if !cached.nil?
+
+  result = min_cost_uncached(cache, state, path, current_cost)
+  unless result == Float::INFINITY
+    cache[state] = result - current_cost
+  end
 
   result
 end
 
-# doesn't work: stack size too big
-def min_cost_uncached(cache, state, path)
-  return 0 if end_state?(state)
+def min_cost_uncached(cache, state, path, current_cost)
+  return current_cost if end_state?(state)
 
-  min = Float::INFINITY
+  # doesn't matter
+  return Float::INFINITY if current_cost >= $global_min
+
+  local_min = Float::INFINITY
 
   legal_moves(state).each do |move|
     new_state, move_cost = execute_move(state, move)
     next if path.include?(new_state)
 
-    min_cost_from_new = min_cost(cache, new_state, path + [new_state])
-    total_cost = move_cost + min_cost_from_new
+    total_cost = min_cost(cache, new_state, path + [new_state], current_cost + move_cost)
 
-    if total_cost < min
-      min = total_cost
+    if total_cost < local_min
+      local_min = total_cost
     end
   end
 
-  min
+  if local_min < $global_min
+    $global_min = local_min
+    # for debugging
+    puts $global_min
+  end
+
+  local_min
 end
 
-puts min_cost({}, state, Set.new)
+puts min_cost({}, state, Set.new, 0)
